@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Bell,
@@ -19,115 +19,14 @@ import {
   WalletCards,
   X
 } from 'lucide-react';
+import { categories as fallbackCategories, products as fallbackProducts } from './catalog';
 import './styles.css';
-
-const categories = [
-  'Elektronik',
-  'Fashion',
-  'Makanan',
-  'Rumah Tangga',
-  'Kesehatan',
-  'Ibu & Anak',
-  'Otomotif',
-  'Hobi'
-];
 
 const quickActions = [
   { label: 'Pulsa', value: 'Rp25.000', icon: WalletCards },
   { label: 'Tagihan', value: 'Bayar cepat', icon: Truck },
   { label: 'Official Store', value: 'Brand asli', icon: Store },
   { label: 'Promo Hari Ini', value: 'Diskon besar', icon: Bell }
-];
-
-const products = [
-  {
-    name: 'Samsung Galaxy A56 5G 8/256GB',
-    price: 5899000,
-    discount: '10%',
-    sold: '1,2rb',
-    rating: 4.9,
-    city: 'Jakarta Pusat',
-    tag: 'Official',
-    color: '#9cc7f7',
-    accent: '#213a68'
-  },
-  {
-    name: 'Sepatu Lari Pria Ringan Breathable',
-    price: 189000,
-    discount: '35%',
-    sold: '4,7rb',
-    rating: 4.8,
-    city: 'Bandung',
-    tag: 'Gratis Ongkir',
-    color: '#d5efe2',
-    accent: '#18845f'
-  },
-  {
-    name: 'Kopi Susu Gula Aren 1 Liter',
-    price: 42000,
-    discount: '18%',
-    sold: '920',
-    rating: 4.9,
-    city: 'Tangerang',
-    tag: 'Terlaris',
-    color: '#f1d5ad',
-    accent: '#7a4520'
-  },
-  {
-    name: 'Rak Dapur Serbaguna Minimalis',
-    price: 159500,
-    discount: '22%',
-    sold: '2,1rb',
-    rating: 4.7,
-    city: 'Surabaya',
-    tag: 'COD',
-    color: '#e4e7ec',
-    accent: '#58616f'
-  },
-  {
-    name: 'Skincare Brightening Serum 30ml',
-    price: 78000,
-    discount: '30%',
-    sold: '8,3rb',
-    rating: 4.9,
-    city: 'Depok',
-    tag: 'Choice',
-    color: '#ffd9e6',
-    accent: '#b44168'
-  },
-  {
-    name: 'Headphone Wireless ANC Bass+',
-    price: 329000,
-    discount: '15%',
-    sold: '633',
-    rating: 4.8,
-    city: 'Jakarta Barat',
-    tag: 'Plus',
-    color: '#d9d3ff',
-    accent: '#5442b9'
-  },
-  {
-    name: 'Set Panci Stainless 5pcs Premium',
-    price: 245000,
-    discount: '28%',
-    sold: '3rb',
-    rating: 4.8,
-    city: 'Bekasi',
-    tag: 'Flash Sale',
-    color: '#d9edf6',
-    accent: '#2d7490'
-  },
-  {
-    name: 'Kemeja Linen Oversized Unisex',
-    price: 119000,
-    discount: '40%',
-    sold: '6,5rb',
-    rating: 4.7,
-    city: 'Yogyakarta',
-    tag: 'Baru',
-    color: '#f4e6c8',
-    accent: '#956c2b'
-  }
 ];
 
 const formatRupiah = (value) =>
@@ -265,7 +164,7 @@ function QuickPanel() {
   );
 }
 
-function CategoryStrip({ selectedCategory, setSelectedCategory }) {
+function CategoryStrip({ categories, selectedCategory, setSelectedCategory }) {
   return (
     <section className="category-strip" aria-label="Kategori pilihan">
       <div className="section-heading">
@@ -291,7 +190,7 @@ function CategoryStrip({ selectedCategory, setSelectedCategory }) {
   );
 }
 
-function Sidebar({ selectedCategory, setSelectedCategory, onlyPromo, setOnlyPromo, sort, setSort, mobileOpen }) {
+function Sidebar({ categories, selectedCategory, setSelectedCategory, onlyPromo, setOnlyPromo, sort, setSort, mobileOpen }) {
   return (
     <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
       <div className="sidebar-title">
@@ -375,14 +274,16 @@ function ProductCard({ product, onAdd, isFavorite, onFavorite }) {
   );
 }
 
-function ProductFeed({ productsToShow, onAdd, favorites, toggleFavorite, selectedCategory, query }) {
+function ProductFeed({ productsToShow, onAdd, favorites, toggleFavorite, selectedCategory, query, apiStatus }) {
   return (
     <section className="feed">
       <div className="feed-heading">
         <div>
           <h2>Rekomendasi Untukmu</h2>
           <p>
-            {query
+            {apiStatus === 'loading'
+              ? 'Mengambil produk dari backend...'
+              : query
               ? `Hasil pencarian untuk "${query}"`
               : selectedCategory === 'Semua'
                 ? 'Produk populer dari toko pilihan'
@@ -432,6 +333,40 @@ function App() {
   const [cartItems, setCartItems] = useState([]);
   const [favorites, setFavorites] = useState([]);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [categories, setCategories] = useState(fallbackCategories);
+  const [products, setProducts] = useState(fallbackProducts);
+  const [apiStatus, setApiStatus] = useState('loading');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    Promise.all([fetch('/api/categories'), fetch('/api/products')])
+      .then(async ([categoryResponse, productResponse]) => {
+        if (!categoryResponse.ok || !productResponse.ok) {
+          throw new Error('API response failed');
+        }
+
+        const categoryPayload = await categoryResponse.json();
+        const productPayload = await productResponse.json();
+
+        if (isMounted) {
+          setCategories(categoryPayload.data);
+          setProducts(productPayload.data);
+          setApiStatus('ready');
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setCategories(fallbackCategories);
+          setProducts(fallbackProducts);
+          setApiStatus('fallback');
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const productsToShow = useMemo(() => {
     let items = products.filter((product) => {
@@ -455,7 +390,21 @@ function App() {
   }, [query, selectedCategory, onlyPromo, sort]);
 
   const addToCart = (product) => {
-    setCartItems((items) => [...items, product]);
+    fetch('/api/cart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId: product.id, name: product.name })
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error('Cart API failed');
+        return response.json();
+      })
+      .then((payload) => {
+        setCartItems(payload.data);
+      })
+      .catch(() => {
+        setCartItems((items) => [...items, product]);
+      });
   };
 
   const toggleFavorite = (name) => {
@@ -474,9 +423,10 @@ function App() {
       <main>
         <Hero />
         <QuickPanel />
-        <CategoryStrip selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />
+        <CategoryStrip categories={categories} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />
         <div className="content-shell">
           <Sidebar
+            categories={categories}
             selectedCategory={selectedCategory}
             setSelectedCategory={setSelectedCategory}
             onlyPromo={onlyPromo}
@@ -492,6 +442,7 @@ function App() {
             toggleFavorite={toggleFavorite}
             selectedCategory={selectedCategory}
             query={query}
+            apiStatus={apiStatus}
           />
         </div>
       </main>
